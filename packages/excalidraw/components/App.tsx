@@ -5231,6 +5231,10 @@ class App extends React.Component<AppProps, AppState> {
         !event.shiftKey &&
         !event.altKey
       ) {
+        if (!this.isDefaultUIEnabled()) {
+          event.preventDefault();
+          return;
+        }
         this.setToast({
           message: t("commandPalette.shortcutHint", {
             shortcut: getShortcutFromShortcutName("commandPalette"),
@@ -5265,6 +5269,9 @@ class App extends React.Component<AppProps, AppState> {
       }
 
       if (event.key === KEYS.QUESTION_MARK) {
+        if (!this.isDefaultUIEnabled()) {
+          return;
+        }
         this.setState({
           openDialog: { name: "help" },
         });
@@ -5274,6 +5281,11 @@ class App extends React.Component<AppProps, AppState> {
         event.shiftKey &&
         event[KEYS.CTRL_OR_CMD]
       ) {
+        // Hosts that hide the default UI (ui={false}) export through their
+        // own shortcut. Don't open the image dialog over a blank sheet.
+        if (!this.isDefaultUIEnabled()) {
+          return;
+        }
         event.preventDefault();
         this.setState({ openDialog: { name: "imageExport" } });
         return;
@@ -5598,6 +5610,9 @@ class App extends React.Component<AppProps, AppState> {
         event[KEYS.CTRL_OR_CMD] &&
         (event.key === KEYS.BACKSPACE || event.key === KEYS.DELETE)
       ) {
+        if (!this.isDefaultUIEnabled()) {
+          return;
+        }
         this.updateEditorAtom(activeConfirmDialogAtom, "clearCanvas");
       }
 
@@ -7545,6 +7560,15 @@ class App extends React.Component<AppProps, AppState> {
       }
       return;
     }
+    // Pen mode is palm rejection for pen displays (Huion Kamvas and similar):
+    // the resting hand is reported as touch. Drop those pointers before they
+    // join the multi-touch gesture, otherwise a palm pans or pinch-zooms the
+    // sheet while the pen is down. Mouse and pen pointers are unaffected, so
+    // a mouse can still draw when no pen is in use.
+    if (this.state.penMode && event.pointerType === "touch") {
+      return;
+    }
+
     // with the active tool allowed via `interaction.enabled.tools`, the
     // pointer keeps driving it through the full flow below — safe while
     // non-interactive because that implies view mode, whose gates constrain
@@ -8990,7 +9014,15 @@ class App extends React.Component<AppProps, AppState> {
   private onPointerMoveFromPointerDownHandler(
     pointerDownState: PointerDownState,
   ) {
-    return withBatchedUpdatesThrottled((event: PointerEvent) => {
+    // High-rate pens (a Huion Kamvas reports well above the display refresh)
+    // emit several samples per frame. The move handler is rAF-throttled and
+    // would otherwise keep only the last event, dropping intermediate points
+    // and their pressure so fast handwriting looks faceted. Samples are
+    // collected on every pointermove and committed once per frame.
+    const pendingSamples: PointerEvent[] = [];
+
+    const throttled = withBatchedUpdatesThrottled((event: PointerEvent) => {
+      const samples = pendingSamples.splice(0, pendingSamples.length);
       if (this.state.openDialog?.name === "elementLinkSelector") {
         return;
       }
@@ -9317,24 +9349,39 @@ class App extends React.Component<AppProps, AppState> {
         }
 
         if (newElement.type === "freedraw") {
-          const points = newElement.points;
-          const dx = pointerCoords.x - newElement.x;
-          const dy = pointerCoords.y - newElement.y;
+          const batch = samples.length > 0 ? samples : [event];
+          const nextPoints = newElement.points.slice();
+          const nextPressures: number[] = newElement.simulatePressure
+            ? []
+            : Array.from(newElement.pressures);
+          let changed = false;
 
-          const lastPoint = points.length > 0 && points[points.length - 1];
-          const discardPoint =
-            lastPoint && lastPoint[0] === dx && lastPoint[1] === dy;
+          for (const sample of batch) {
+            const sampleCoords = viewportCoordsToSceneCoords(
+              sample,
+              this.state,
+            );
+            const dx = sampleCoords.x - newElement.x;
+            const dy = sampleCoords.y - newElement.y;
+            const lastPoint = nextPoints[nextPoints.length - 1];
+            if (lastPoint && lastPoint[0] === dx && lastPoint[1] === dy) {
+              continue;
+            }
+            nextPoints.push(pointFrom<LocalPoint>(dx, dy));
+            if (!newElement.simulatePressure) {
+              nextPressures.push(sample.pressure);
+            }
+            changed = true;
+          }
 
-          if (!discardPoint) {
-            const pressures = newElement.simulatePressure
-              ? newElement.pressures
-              : [...newElement.pressures, event.pressure];
-
+          if (changed) {
             this.scene.mutateElement(
               newElement,
               {
-                points: [...points, pointFrom<LocalPoint>(dx, dy)],
-                pressures,
+                points: nextPoints,
+                pressures: newElement.simulatePressure
+                  ? newElement.pressures
+                  : nextPressures,
               },
               {
                 informMutation: false,
@@ -9410,6 +9457,31 @@ class App extends React.Component<AppProps, AppState> {
         pointerDownState,
       );
     }, this.ownerWindow);
+
+    const onPointerMove = (event: PointerEvent) => {
+      const coalesced =
+        typeof event.getCoalescedEvents === "function"
+          ? event.getCoalescedEvents()
+          : null;
+      if (coalesced && coalesced.length > 0) {
+        for (const sample of coalesced) {
+          pendingSamples.push(sample);
+        }
+      } else {
+        pendingSamples.push(event);
+      }
+      throttled(event);
+    };
+
+    return Object.assign(onPointerMove, {
+      flush: () => {
+        throttled.flush();
+      },
+      cancel: () => {
+        pendingSamples.length = 0;
+        throttled.cancel();
+      },
+    });
   }
 
   // Returns whether the pointer move happened over either scrollbar

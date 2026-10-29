@@ -260,6 +260,8 @@ export default defineConfig(({ mode }) => {
       svgrPlugin(),
       ViteEjsPlugin(),
       VitePWA({
+        // The bare whiteboard does not install a service worker.
+        disable: true,
         registerType: "autoUpdate",
         devOptions: {
           /* set this flag to true to enable in Development mode */

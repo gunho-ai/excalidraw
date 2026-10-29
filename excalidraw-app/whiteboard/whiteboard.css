@@ -1,0 +1,38 @@
+html,
+body,
+#root {
+  background: #ffffff;
+  color-scheme: light;
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+  overscroll-behavior: none;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
+
+/* ui={false} leaves an empty overlay in the tree. Collapse it so nothing
+   paints or sits above the sheet, including on a phone-sized window. */
+.excalidraw.excalidraw--ui-hidden .layer-ui__wrapper,
+.excalidraw.excalidraw--ui-hidden .FixedSideContainer,
+.excalidraw.excalidraw--ui-hidden .App-menu,
+.excalidraw.excalidraw--ui-hidden .App-top-bar,
+.excalidraw.excalidraw--ui-hidden .App-bottom-bar,
+.excalidraw.excalidraw--ui-hidden .App-welcome-screen,
+.excalidraw.excalidraw--ui-hidden footer,
+.excalidraw.excalidraw--ui-hidden .Toast,
+.excalidraw.excalidraw--ui-hidden .HelpDialog,
+.excalidraw.excalidraw--ui-hidden .excalidraw-modal-container {
+  display: none !important;
+}
+
+body:has(.excalidraw--ui-hidden) .excalidraw-modal-container {
+  display: none !important;
+}
+
+.excalidraw.excalidraw--ui-hidden,
+.excalidraw.excalidraw--ui-hidden canvas {
+  background-color: #ffffff;
+}
