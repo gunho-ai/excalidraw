@@ -1,3 +1,28 @@
+# GunHo whiteboard
+
+This fork runs as a blank pen sheet. No toolbar, grid, menus, or welcome screen. Freedraw is selected on load and stays selected.
+
+```bash
+yarn install
+yarn start
+```
+
+The dev server listens on `http://localhost:3001` (`VITE_APP_PORT`).
+
+Drawing persists in `localStorage` (`excalidraw`, `excalidraw-state`). Undo is Ctrl/Cmd+Z, redo is Ctrl/Cmd+Shift+Z or Ctrl/Cmd+Y. The eraser is the pen's eraser end, or the `E` / `0` keys.
+
+`window.whiteboard`, after load:
+
+- `getScene()` → `{ elements, appState, files, json }`
+- `exportPNG()` → `Promise<Blob>` (white background, scene embedded in the PNG)
+- `exportSVG()` → `Promise<Blob>`
+- `exportJSON()` → `Blob`
+- `download()` → saves all three (also Ctrl/Cmd+Shift+S)
+
+Details live in `excalidraw-app/App.tsx`.
+
+---
+
 <a href="https://excalidraw.com/" target="_blank" rel="noopener">
   <picture>
     <source media="(prefers-color-scheme: dark)" alt="Excalidraw" srcset="https://excalidraw.nyc3.cdn.digitaloceanspaces.com/github/excalidraw_github_cover_2_dark.png" />

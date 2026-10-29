@@ -6868,6 +6868,11 @@ class App extends React.Component<AppProps, AppState> {
       }
       return;
     }
+    // See handleCanvasPointerDown: palm touches must not move the viewport
+    // or the last-pointer sample while a pen is the input device.
+    if (this.state.penMode && event.pointerType === "touch") {
+      return;
+    }
     this.savePointer(event.clientX, event.clientY, this.state.cursorButton);
     this.lastPointerMoveEvent = event.nativeEvent;
     // corrects a missed keydown/keyup (e.g. pressed outside the editor)
@@ -7545,6 +7550,15 @@ class App extends React.Component<AppProps, AppState> {
       }
       return;
     }
+
+    // A palm on a pen display arrives as touch while penMode is on. Refuse it
+    // before it joins the gesture map: otherwise it pans, pinches, or aborts
+    // the pen stroke. Mouse and pen pointers are unchanged.
+    if (this.state.penMode && event.pointerType === "touch") {
+      event.preventDefault();
+      return;
+    }
+
     // with the active tool allowed via `interaction.enabled.tools`, the
     // pointer keeps driving it through the full flow below — safe while
     // non-interactive because that implies view mode, whose gates constrain
@@ -8060,6 +8074,9 @@ class App extends React.Component<AppProps, AppState> {
   private updateGestureOnPointerDown(
     event: React.PointerEvent<HTMLElement>,
   ): void {
+    if (this.state.penMode && event.pointerType === "touch") {
+      return;
+    }
     gesture.pointers.set(event.pointerId, {
       x: event.clientX,
       y: event.clientY,
@@ -8081,6 +8098,9 @@ class App extends React.Component<AppProps, AppState> {
   private updateMultiTouchGesture = (
     event: React.PointerEvent<HTMLCanvasElement>,
   ) => {
+    if (this.state.penMode && event.pointerType === "touch") {
+      return;
+    }
     if (gesture.pointers.has(event.pointerId)) {
       gesture.pointers.set(event.pointerId, {
         x: event.clientX,
@@ -9317,23 +9337,43 @@ class App extends React.Component<AppProps, AppState> {
         }
 
         if (newElement.type === "freedraw") {
-          const points = newElement.points;
-          const dx = pointerCoords.x - newElement.x;
-          const dy = pointerCoords.y - newElement.y;
+          // Pens report faster than a frame (a Kamvas is well above 100Hz).
+          // Coalesced samples are the points the browser held back since the
+          // last delivered move; rendering stays once per frame.
+          const coalesced =
+            typeof event.getCoalescedEvents === "function"
+              ? event.getCoalescedEvents()
+              : [];
+          const samples = coalesced.length > 0 ? coalesced : [event];
 
-          const lastPoint = points.length > 0 && points[points.length - 1];
-          const discardPoint =
-            lastPoint && lastPoint[0] === dx && lastPoint[1] === dy;
+          let points = newElement.points;
+          let pressures = newElement.pressures;
+          let didAppend = false;
 
-          if (!discardPoint) {
-            const pressures = newElement.simulatePressure
-              ? newElement.pressures
-              : [...newElement.pressures, event.pressure];
+          for (const sample of samples) {
+            const sampleCoords = viewportCoordsToSceneCoords(
+              sample,
+              this.state,
+            );
+            const dx = sampleCoords.x - newElement.x;
+            const dy = sampleCoords.y - newElement.y;
+            const lastPoint =
+              points.length > 0 ? points[points.length - 1] : null;
+            if (lastPoint && lastPoint[0] === dx && lastPoint[1] === dy) {
+              continue;
+            }
+            points = [...points, pointFrom<LocalPoint>(dx, dy)];
+            if (!newElement.simulatePressure) {
+              pressures = [...pressures, sample.pressure];
+            }
+            didAppend = true;
+          }
 
+          if (didAppend) {
             this.scene.mutateElement(
               newElement,
               {
-                points: [...points, pointFrom<LocalPoint>(dx, dy)],
+                points,
                 pressures,
               },
               {

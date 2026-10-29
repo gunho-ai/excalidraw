@@ -1,19 +1,17 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
-import { registerSW } from "virtual:pwa-register";
-
-import "../excalidraw-app/sentry";
 
 import ExcalidrawApp from "./App";
 
-// the entry's JavaScript and CSS loaded and ran (`scripts/stats/perf.mjs`)
-performance.mark("excalidraw:app-start");
+// Leave render throttling off. The host app used to set
+// EXCALIDRAW_THROTTLE_RENDER, which delays a frame of ink on a pen display.
 
-window.__EXCALIDRAW_SHA__ = import.meta.env.VITE_APP_GIT_SHA;
-const rootElement = document.getElementById("root")!;
-const root = createRoot(rootElement);
-registerSW();
-root.render(
+const rootElement = document.getElementById("root");
+if (!rootElement) {
+  throw new Error("Whiteboard root element is missing");
+}
+
+createRoot(rootElement).render(
   <StrictMode>
     <ExcalidrawApp />
   </StrictMode>,
