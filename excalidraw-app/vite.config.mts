@@ -108,8 +108,8 @@ export default defineConfig(({ mode }) => {
   return {
     server: {
       port: Number(envVars.VITE_APP_PORT || 3000),
-      // open the browser
-      open: true,
+      // a blank sheet; open it yourself (a pen display, or localhost)
+      open: false,
     },
     // We need to specify the envDir since now there are no
     //more located in parallel with the vite.config.ts file but in parent dir
@@ -260,6 +260,7 @@ export default defineConfig(({ mode }) => {
       svgrPlugin(),
       ViteEjsPlugin(),
       VitePWA({
+        disable: true,
         registerType: "autoUpdate",
         devOptions: {
           /* set this flag to true to enable in Development mode */
